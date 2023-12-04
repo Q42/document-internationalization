@@ -13,7 +13,7 @@ import {uuid} from '@sanity/uuid'
 import {useCallback} from 'react'
 import {SanityDocument, useClient} from 'sanity'
 
-import {API_VERSION, METADATA_SCHEMA_NAME} from '../constants'
+import {METADATA_SCHEMA_NAME} from '../constants'
 import {useOpenInNewPane} from '../hooks/useOpenInNewPane'
 import {Language, Metadata, TranslationReference} from '../types'
 import {createReference} from '../utils/createReference'
@@ -48,7 +48,7 @@ export default function LanguageOption(props: LanguageOptionProps) {
     .length
     ? metadata.translations.find((t) => t._key === language.id)
     : undefined
-  const {apiVersion, languageField, weakReferences} =
+  const {apiVersion, languageField, weakReferences, onDuplicate} =
     useDocumentInternationalizationContext()
   const client = useClient({apiVersion})
   const toast = useToast()
@@ -69,74 +69,78 @@ export default function LanguageOption(props: LanguageOptionProps) {
       throw new Error(`Cannot create translation without a metadata ID`)
     }
 
-    const transaction = client.transaction()
+    try {
+      const transaction = client.transaction()
 
-    // 1. Duplicate source document
-    const newTranslationDocumentId = uuid()
-    const newTranslationDocument = {
-      ...source,
-      _id: `drafts.${newTranslationDocumentId}`,
-      // 2. Update language of the translation
-      [languageField]: language.id,
-    }
-
-    transaction.create(newTranslationDocument)
-
-    // 3. Maybe create the metadata document
-    const sourceReference = createReference(
-      sourceLanguageId,
-      documentId,
-      schemaType,
-      !weakReferences
-    )
-    const newTranslationReference = createReference(
-      language.id,
-      newTranslationDocumentId,
-      schemaType,
-      !weakReferences
-    )
-    const newMetadataDocument = {
-      _id: metadataId,
-      _type: METADATA_SCHEMA_NAME,
-      schemaTypes: [schemaType],
-      translations: [sourceReference],
-    }
-
-    transaction.createIfNotExists(newMetadataDocument)
-
-    // 4. Patch translation to metadata document
-    // Note: If the document was only just created in the operation above
-    // This patch operation will have no effect
-    const metadataPatch = client
-      .patch(metadataId)
-      .setIfMissing({translations: [sourceReference]})
-      .insert(`after`, `translations[-1]`, [newTranslationReference])
-
-    transaction.patch(metadataPatch)
-
-    // 5. Commit!
-    transaction
-      .commit()
-      .then(() => {
-        const metadataExisted = Boolean(metadata?._createdAt)
-
-        return toast.push({
-          status: 'success',
-          title: `Created "${language.title}" translation`,
-          description: metadataExisted
-            ? `Updated Translations Metadata`
-            : `Created Translations Metadata`,
-        })
+      // 1. Duplicate source document
+      const newTranslationDocumentId = uuid()
+      const duplicatedSource = await onDuplicate({
+        document: source,
+        language,
+        client,
       })
-      .catch((err) => {
-        console.error(err)
+      const newTranslationDocument = {
+        ...duplicatedSource,
+        _id: `drafts.${newTranslationDocumentId}`,
+        // 2. Update language of the translation
+        [languageField]: language.id,
+      }
 
-        return toast.push({
-          status: 'error',
-          title: `Error creating translation`,
-          description: err.message,
-        })
+      transaction.create(newTranslationDocument)
+
+      // 3. Maybe create the metadata document
+      const sourceReference = createReference(
+        sourceLanguageId,
+        documentId,
+        schemaType,
+        !weakReferences
+      )
+      const newTranslationReference = createReference(
+        language.id,
+        newTranslationDocumentId,
+        schemaType,
+        !weakReferences
+      )
+      const newMetadataDocument = {
+        _id: metadataId,
+        _type: METADATA_SCHEMA_NAME,
+        schemaTypes: [schemaType],
+        translations: [sourceReference],
+      }
+
+      transaction.createIfNotExists(newMetadataDocument)
+
+      // 4. Patch translation to metadata document
+      // Note: If the document was only just created in the operation above
+      // This patch operation will have no effect
+      const metadataPatch = client
+        .patch(metadataId)
+        .setIfMissing({translations: [sourceReference]})
+        .insert(`after`, `translations[-1]`, [newTranslationReference])
+
+      transaction.patch(metadataPatch)
+
+      // 5. Commit!
+      await transaction.commit()
+
+      const metadataExisted = Boolean(metadata?._createdAt)
+
+      return toast.push({
+        status: 'success',
+        title: `Created "${language.title}" translation`,
+        description: metadataExisted
+          ? `Updated Translations Metadata`
+          : `Created Translations Metadata`,
       })
+    } catch (err) {
+      console.error(err)
+
+      return toast.push({
+        status: 'error',
+        title: `Error creating translation`,
+        description: err instanceof Error ? err.message : undefined,
+      })
+    }
   }, [
     client,
     documentId,
