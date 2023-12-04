@@ -12,6 +12,7 @@ import {
 import {uuid} from '@sanity/uuid'
 import {useCallback} from 'react'
 import {SanityDocument, useClient} from 'sanity'
+import {useRouter} from 'sanity/router'
 
 import {METADATA_SCHEMA_NAME} from '../constants'
 import {useOpenInNewPane} from '../hooks/useOpenInNewPane'
@@ -52,6 +53,7 @@ export default function LanguageOption(props: LanguageOptionProps) {
     useDocumentInternationalizationContext()
   const client = useClient({apiVersion})
   const toast = useToast()
+  const {navigateUrl, resolveIntentLink} = useRouter()
 
   const open = useOpenInNewPane(translation?.value?._ref, schemaType)
   const handleOpen = useCallback(() => open(), [open])
@@ -125,13 +127,19 @@ export default function LanguageOption(props: LanguageOptionProps) {
 
       const metadataExisted = Boolean(metadata?._createdAt)
 
-      return toast.push({
+      toast.push({
         status: 'success',
         title: `Created "${language.title}" translation`,
         description: metadataExisted
           ? `Updated Translations Metadata`
           : `Created Translations Metadata`,
       })
+
+      const path = resolveIntentLink('edit', {
+        id: newTranslationDocumentId,
+        type: newTranslationDocument._type,
+      })
+      return navigateUrl({path})
     } catch (err) {
       console.error(err)
 
