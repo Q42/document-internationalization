@@ -48,7 +48,7 @@
     "lint": "eslint .",
     "prepublishOnly": "run-s build",
     "watch": "pkg-utils watch --strict",
-    "prepare": "husky install"
+    "prepare": "husky install && npm run build"
   },
   "dependencies": {
     "@sanity/icons": "^2.2.2",
