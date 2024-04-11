@@ -6,6 +6,7 @@ import type {
   ObjectSchemaType,
   Reference,
   SanityClient,
+  SanityDocument,
 } from 'sanity'
 
 export type Language = {
@@ -25,6 +26,14 @@ export type PluginConfig = {
   bulkPublish?: boolean
   metadataFields?: FieldDefinition[]
   apiVersion?: string
+  onDuplicate?: ({
+    document,
+    language,
+  }: {
+    document: SanityDocument
+    language: Language
+    client: SanityClient
+  }) => Promise<SanityDocument> | SanityDocument
 }
 
 // Context version of config
